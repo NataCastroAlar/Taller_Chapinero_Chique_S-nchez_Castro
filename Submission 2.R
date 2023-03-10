@@ -1,13 +1,17 @@
 rm(list = ls())
 
-train <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Taller 3/Datos/Bogota_train.csv")
-test <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Taller 3/Datos/Bogota_test.csv")
+require("pacman")
+p_load("tidyverse","sf","geojsonio")
+p_load("leaflet")
+library(readr)
 
+train <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Repositorios/Taller_Chapinero_Chique_Sanchez_Castro/Data/Bogota_train.csv")
+test  <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Repositorios/Taller_Chapinero_Chique_Sanchez_Castro/Data/Bogota_test.csv")
 
 ##CLUSTERING
 
 set.seed(101011)
-train_sample<-train  %>% sample_frac(size=1/20)  #una fracción de los datos para rapidez en clase, usted use todos
+train_sample <-train %>% sample_frac(size=1/20)  #una fracción de los datos para rapidez en clase, usted use todos
 db<- train_sample  %>%  select(geometry) #me quedo sólo con la geometría
 head(db)
 
@@ -132,10 +136,19 @@ colnames(bdtrain_is)
 
 p_load("SuperLearner")
 
+modelo <- lm(price ~rooms + bathrooms + property_type + year + distancia_parque + 
+               distancia_avenida_principal + distancia_comercial, data = bdtrain_is)
+
+head(modelo)
+
+p_load("stargazer")
+
+stargazer(modelo, title = "Resultados de la regresión lineal", type = "text")
+
 #Modelos disponibles
 listWrappers()
 
-ySL<- bdtrain_is$logprice
+ySL<- bdtrain_is$price
 XSL<- bdtrain_is  %>% select(rooms, bathrooms, property_type, year, 
                              distancia_parque, distancia_avenida_principal, distancia_universidad, distancia_comercial)
 
@@ -157,23 +170,49 @@ head(bdtest_is$yhat_Sup)
 test <- test  %>%  mutate(yhat_Sup=predict(fitY, newdata = data.frame(test), onlySL = T)$pred)
 head(test$yhat_Sup)
 
-with(bdtest_is,mean(abs(logprice-yhat_Sup))) #MAE
+with(bdtest_is,mean(abs(price-yhat_Sup))) #MAE
 
-test<- test  %>% mutate(Pred=exp(yhat_Sup))
+test<- test  %>% mutate(Pred=(yhat_Sup))
 colnames(test)
 
-Submission2 <- test %>%
-  select(property_id, Pred)
+Submission3 <- test %>%
+  select(property_id, yhat_Sup)
 
-Submission2 <- Submission2 %>%
-  rename(Price = Pred)
+Submission3 <- Submission3 %>%
+  rename(Price = yhat_Sup)
 
-setwd("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Taller 3/Datos")
+setwd("Desktop/MAESTRIA 2023/Big Data and Machine Learning/9. Talleres/Taller 3/Datos/")
 
-write.csv(Submission2, file="submission2.csv", row.names = F)
+write.csv(Submission3, file="submission3.csv", row.names = F)
 
+##VARIABLE DE AREA
+substr(bd$description, 1, 500)
+s
+library(stringi)
+# Eliminamos tildes
 
+bd$description <- tolower(bd$description)
+bd$description <- iconv(bd$description, from = "UTF-8", to = "ASCII//TRANSLIT")
 
+substr(bd$description, 1, 500)
+
+library(stringr)
+
+Metros <- str_extract(bd$description, "\\d+\\s*(mts|m2|metros)")
+
+bd_new <- cbind(bd, area = Metros)
+
+Area_sin_texto <- gsub("m2", "", Metros)
+Area_sin_texto <- gsub("[[:alpha:]]", "", Area_sin_texto)
+as.numeric(Area_sin_texto)
+
+bd_new <- cbind(bd, area = Area_sin_texto)
+
+sapply(bd_new, function(x) sum(is.na(x)))
+
+bd_new$Superficie <- ifelse(is.na(bd_new$surface_covered), bd_new$area, bd_new$surface_covered)
+
+sapply(bd_new, function(x) sum(is.na(x)))
 
 
 

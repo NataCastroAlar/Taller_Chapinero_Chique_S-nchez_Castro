@@ -3,79 +3,17 @@ rm(list = ls())
 require("pacman")
 p_load("tidyverse","sf","geojsonio")
 p_load("leaflet")
+p_load("skimr")
 library(readr)
 
 train <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Repositorios/Taller_Chapinero_Chique_Sanchez_Castro/Data/Bogota_train.csv")
 test  <- read_csv("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Repositorios/Taller_Chapinero_Chique_Sanchez_Castro/Data/Bogota_test.csv")
 
-##CLUSTERING
-
-set.seed(101011)
-train_sample <-train %>% sample_frac(size=1/20)  #una fracción de los datos para rapidez en clase, usted use todos
-db<- train_sample  %>%  select(geometry) #me quedo sólo con la geometría
-head(db)
-
-db_sample<-st_distance(db) #matriz de distancias
-head(db_sample)
-
-##Datos completos
-
-#db_PS<- train_sf  %>%  select(geometry) #me quedo sólo con la geometría
-#head(db_PS)
-
-#db_PS<-st_distance(db_PS) #matriz de distancias
-#head(db_PS)
-
-
-db_sample<-units::drop_units(db_sample) #elimina las unidades de la matriz
-head(db_sample)
-
-k2 <- kmeans(db_sample, centers = 2, nstart = 25)
-str(k2)
-
-train_sample<- train_sample %>% mutate(clusters2=factor(k2$cluster))
-
-ggplot() +
-  geom_sf(data=train_sample,aes(col=clusters2)) + #graficamos las predicciones
-  theme_bw()
-
-#Numero de clusters a elegir
-
-#Método del codo
-
-# función que calcula la SSR within-cluster 
-wss <- function(k) {
-  kmeans(db_sample, k, nstart = 25 )$tot.withinss
-}
-
-# Calculamos y graficamos para k = 1 hasta k = 12
-wss_values <- sapply(1:12,wss)
-
-plot(1:12, wss_values,
-     type="b", pch = 19, frame = FALSE, 
-     xlab="Número de clusters (K)",
-     ylab="SSR within-clusters total")
-
-
-p_load("cluster")
-# función para extraer el coeficiente de silhouette
-
-avg_sil <- function(k) {
-  km.res <- kmeans(db_sample, centers = k, nstart = 25)
-  ss <- cluster::silhouette(km.res$cluster, dist(db_sample))
-  mean(ss[, 3])
-}
-
-
-# Calcular el coeficiente de silhouette para  k = 2 hasta k = 12
-valores_sil <-  sapply(2:12,avg_sil)
-
-plot(2:12, valores_sil,
-     type = "b", pch = 19, frame = FALSE, 
-     xlab="Número de clusters (K)",
-     ylab = "Coeficiente de Silhouette")
 
 #Limpiando base
+
+skim(train)
+skim(test)
 
 # * Veamos los NAs de la base
 
@@ -84,60 +22,151 @@ sapply(test, function(x) sum(is.na(x)))
 
 ## * Imputando datos faltantes
 
-# *** En train
-train$rooms %>%
-  table(useNA = "ifany") %>%
-  prop.table() %>%
-  round(3)*100
+library(ggplot2)
+p_load(VIM)
 
-train$bathrooms %>%
-  table(useNA = "ifany") %>%
-  prop.table() %>%
-  round(3)*100
+train <-  kNN(train, variable = c("bathrooms"), k = 6)
+train$bathrooms <- round(train$bathrooms,0)
+summary(train$bathrooms)
 
-train$rooms[is.na(train$rooms)] <- 3
-train$bathrooms[is.na(train$bathrooms)] <- 2
+test <-  kNN(test, variable = c("bathrooms"), k = 6)
+test$bathrooms <- round(test$bathrooms,0)
+summary(test$bathrooms)
+
+# Generando variables
+
+train$rooms[is.na(train$rooms)] <- 0
+train$rooms_tot <- apply(train[, c("rooms", "bedrooms")], 1, max)
+
+test$rooms[is.na(test$rooms)] <- 0
+test$rooms_tot <- apply(test[, c("rooms", "bedrooms")], 1, max)
+
+sapply(train, function(x) sum(is.na(x)))
+sapply(test, function(x) sum(is.na(x)))
+
+# Creando variable area desde descripción
+
+##---->Para train
+substr(train$description, 1, 500)
+
+library(stringi)
+
+##Volvemos todo minuscula y eliminamos tildes tildes
+train$description <- tolower(train$description)
+train$description <- iconv(train$description, from = "UTF-8", to = "ASCII//TRANSLIT")
+substr(train$description, 1, 500)
+
+Metros <- str_extract(train$description, "\\d+\\s*(mts|m2|metros)")
+
+train <- cbind(train, area = Metros)
+
+Area_sin_texto <- gsub("m2", "", Metros)
+Area_sin_texto <- gsub("[[:alpha:]]", "", Area_sin_texto)
+as.numeric(Area_sin_texto)
+
+train <- cbind(train, area_m2 = Area_sin_texto)
+sapply(train, function(x) sum(is.na(x)))
+train$area_tot <- ifelse(is.na(train$surface_covered), train$area_m2, train$surface_covered)
 
 sapply(train, function(x) sum(is.na(x)))
 
-# *** En test
-test$rooms %>%
-  table(useNA = "ifany") %>%
-  prop.table() %>%
-  round(3)*100
+##---->Para test
 
-test$bathrooms %>%
-  table(useNA = "ifany") %>%
-  prop.table() %>%
-  round(3)*100
+substr(test$description, 1, 500)
 
-test$rooms[is.na(test$rooms)] <- 3
-test$bathrooms[is.na(test$bathrooms)] <- 2
+##Volvemos todo minuscula y eliminamos tildes tildes
+test$description <- tolower(test$description)
+test$description <- iconv(test$description, from = "UTF-8", to = "ASCII//TRANSLIT")
+substr(test$description, 1, 500)
+
+Metros <- str_extract(test$description, "\\d+\\s*(mts|m2|metros)")
+
+test <- cbind(test, area = Metros)
+
+Area_sin_texto <- gsub("m2", "", Metros)
+Area_sin_texto <- gsub("[[:alpha:]]", "", Area_sin_texto)
+as.numeric(Area_sin_texto)
+
+test <- cbind(test, area_m2 = Area_sin_texto)
+sapply(test, function(x) sum(is.na(x)))
+test$area_tot <- ifelse(is.na(test$surface_covered), test$area_m2, test$surface_covered)
 
 sapply(test, function(x) sum(is.na(x)))
 
+#Imputando faltantes en area con KNN
 
-#Superlearner
+train <-  kNN(train, variable = c("area_tot"), k = 6)
 
-bd<- train %>% mutate(logprice=log(price))
+train$area_tot_num <- as.numeric(train$area_tot)
+train$area_tot <- round(train$area_tot_num,0)
 
-p_load("caret")
-set.seed(1011)
-inTrain <- createDataPartition(
-  y = bd$logprice,## La variable dependiente u objetivo 
-  p = .7, ## Usamos 70%  de los datos en el conjunto de entrenamiento 
-  list = FALSE)
+summary(train$area_tot)
 
+test <-  kNN(test, variable = c("area_tot"), k = 6)
 
-bdtrain_is <- bd[ inTrain,]
-bdtest_is  <- bd[-inTrain,]
-colnames(bdtrain_is)
+test$area_tot_num <- as.numeric(test$area_tot)
+test$area_tot <- round(test$area_tot_num,0)
+summary(test$area_tot)
 
+sapply(train, function(x) sum(is.na(x)))
+sapply(test, function(x) sum(is.na(x)))
 
-p_load("SuperLearner")
+#Selección de variables para el modelo
 
-modelo <- lm(price ~rooms + bathrooms + property_type + year + distancia_parque + 
-               distancia_avenida_principal + distancia_comercial, data = bdtrain_is)
+train <- select(train, property_id,  bathrooms, area_tot, bathrooms_imp, 
+                lat, property_type, lon, distancia_parque, distancia_universidad, 
+                rooms_tot, area_tot_imp,  price, distancia_avenida_principal)
+
+test <- select(test, property_id,  bathrooms, area_tot, bathrooms_imp, 
+                lat, property_type, lon, distancia_parque, distancia_universidad, 
+                rooms_tot, area_tot_imp,  price, distancia_avenida_principal)
+
+#Eliminando outliers
+# Calcular cuartiles y rango intercuartil
+
+train_new <- train
+test_new <- test
+
+#-----> para train
+
+iqr_area_tot <- IQR(train_new$area_tot)
+
+lim_inf <- quantile(train_new$area_tot, 0.25) - 1.5 * iqr_area_tot
+lim_sup <- quantile(train_new$area_tot, 0.75) + 1.5 * iqr_area_tot
+
+outliers_area_tot <- train_new$area_tot < lim_inf | train_new$area_tot > lim_sup
+
+train_sin_outliers <- train_new[!outliers_area_tot,]
+
+#-----> para test
+
+iqr_area_tot <- IQR(test_new$area_tot)
+
+lim_inf <- quantile(test_new$area_tot, 0.25) - 1.5 * iqr_area_tot
+lim_sup <- quantile(test_new$area_tot, 0.75) + 1.5 * iqr_area_tot
+
+outliers_area_tot <- test_new$area_tot < lim_inf | test_new$area_tot > lim_sup
+
+test_sin_outliers <- test_new[!outliers_area_tot,]
+
+ggplot(train_sin_outliers, aes(x = area_tot)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "white") +
+  labs(title = "Histograma de datos", x = "Valores", y = "Frecuencia")
+
+ggplot(test_sin_outliers, aes(x = area_tot)) +
+  geom_histogram(binwidth = 0.5, color = "black", fill = "white") +
+  labs(title = "Histograma de datos", x = "Valores", y = "Frecuencia")
+
+ggplot(data = train_sin_outliers, aes(x = area_tot, y = price)) +
+  geom_point()
+
+##--------Regresión Lineal-------##
+
+sapply(train_sin_outliers, function(x) sum(is.na(x)))
+
+modelo <- lm(price ~area_tot + lat + lon + distancia_universidad + area_tot_imp +
+               distancia_avenida_principal + bathrooms + bathrooms_imp + property_type + 
+               distancia_parque + rooms_tot, data = train_sin_outliers)
 
 head(modelo)
 
@@ -145,13 +174,33 @@ p_load("stargazer")
 
 stargazer(modelo, title = "Resultados de la regresión lineal", type = "text")
 
+
+##-----------Superlearner--------##
+
+bd<- train_sin_outliers %>% mutate(logprice=log(price)) 
+
+p_load("caret")
+p_load("SuperLearner")
+
+set.seed(1011)
+inTrain <- createDataPartition(
+  y = bd$logprice,## La variable dependiente u objetivo 
+  p = .7, ## Usamos 70%  de los datos en el conjunto de entrenamiento 
+  list = FALSE)
+
+bdtrain_is <- bd[ inTrain,]
+bdtest_is  <- bd[-inTrain,]
+colnames(bdtrain_is)
+
 #Modelos disponibles
 listWrappers()
 
 ySL<- bdtrain_is$price
-XSL<- bdtrain_is  %>% select(rooms, bathrooms, property_type, year, 
-                             distancia_parque, distancia_avenida_principal, distancia_universidad, distancia_comercial)
+XSL<- bdtrain_is  %>% select(area_tot, lat, lon, distancia_universidad, area_tot_imp,
+                               distancia_avenida_principal, bathrooms, bathrooms_imp, property_type,  
+                               distancia_parque, rooms_tot)
 
+sapply(bdtrain_is, class)
 
 sl.lib <- c("SL.randomForest", "SL.lm") #lista de los algoritmos a correr
 
@@ -175,48 +224,12 @@ with(bdtest_is,mean(abs(price-yhat_Sup))) #MAE
 test<- test  %>% mutate(Pred=(yhat_Sup))
 colnames(test)
 
-Submission3 <- test %>%
+Submission4 <- test %>%
   select(property_id, yhat_Sup)
 
-Submission3 <- Submission3 %>%
+Submission4 <- Submission4 %>%
   rename(Price = yhat_Sup)
 
-setwd("Desktop/MAESTRIA 2023/Big Data and Machine Learning/9. Talleres/Taller 3/Datos/")
+setwd("~/Desktop/MAESTRIA 2023/Big Data and Machine Learning/Repositorios/Taller_Chapinero_Chique_Sanchez_Castro/Data/")
 
-write.csv(Submission3, file="submission3.csv", row.names = F)
-
-##VARIABLE DE AREA
-substr(bd$description, 1, 500)
-s
-library(stringi)
-# Eliminamos tildes
-
-bd$description <- tolower(bd$description)
-bd$description <- iconv(bd$description, from = "UTF-8", to = "ASCII//TRANSLIT")
-
-substr(bd$description, 1, 500)
-
-library(stringr)
-
-Metros <- str_extract(bd$description, "\\d+\\s*(mts|m2|metros)")
-
-bd_new <- cbind(bd, area = Metros)
-
-Area_sin_texto <- gsub("m2", "", Metros)
-Area_sin_texto <- gsub("[[:alpha:]]", "", Area_sin_texto)
-as.numeric(Area_sin_texto)
-
-bd_new <- cbind(bd, area = Area_sin_texto)
-
-sapply(bd_new, function(x) sum(is.na(x)))
-
-bd_new$Superficie <- ifelse(is.na(bd_new$surface_covered), bd_new$area, bd_new$surface_covered)
-
-sapply(bd_new, function(x) sum(is.na(x)))
-
-
-
-
-
-
-
+write.csv(Submission4, file="submission4.csv", row.names = F)

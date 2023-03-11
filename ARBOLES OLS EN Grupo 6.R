@@ -1,4 +1,4 @@
-
+pre_proc_val <- preProcess(train[,cols], method = c("center", "scale"))
 ###########################
 #MODELOS ARBOLES
 #GRUPO 6
@@ -110,56 +110,53 @@ set.seed(123)
 
 #Cross validation V=5
 
-cv8<- trainControl(number = 8, method ="cv")
+cv10<- trainControl(number = 10, method ="cv")
 
-
-arbol<- train(price ~ bedrooms + property_type + distancia_parque+ distancia_comercial+ distancia_avenida_principal + distancia_universidad ,
-              data=train_muestra, method = "rpart",
-                  trControl = cv8)
-
+arbol_1<-train(price ~ bedrooms + surface_covered + rooms + tipo + distancia_parque+ distancia_comercial+ distancia_avenida_principal +
+                         distancia_universidad,
+                       data=train_muestra,
+               method="rpart",
+               trControl = cv10)
 p_load(rattle)
-fancyRpartPlot(arbol$finalModel)
+fancyRpartPlot(arbol_1$finalModel)
 
-pred_train_muestra<-predict(arbol, newdata=train_muestra)
-pred_test_arbol_muestra<-predict(arbol, newdata=test_muestra)
+pred_train_arbol_muestra<-predict(arbol_1, newdata=train_muestra)
+pred_test_arbol_muestra<-predict(arbol_1, newdata=test_muestra)
 
-pred_train_muestra
-pred_test_arbol_muestra
 
-library(MLmetrics)
-
-##EN MUESTRA
 #Error en porcentaje
-MAPE(y_pred=pred_train_muestra, y_true = train_muestra$price)
+MAPE(y_pred=pred_train_arbol_muestra, y_true = train_muestra$price)
 
 #Error promedio
-MAE(y_pred=pred_train_muestra, y_true = train_muestra$price)
+MAE(y_pred=pred_train_arbol_muestra, y_true = train_muestra$price)
 
 ## FUERA DE MUESTRA
 #Error en porcentaje
 MAPE(y_pred=pred_test_arbol_muestra, y_true = test_muestra$price)
 
 #Error promedio
-MAE(y_pred=pred_train, y_true = train$price)
+MAE(y_pred=pred_test_arbol_muestra, y_true = test_muestra$price)
+
 
 
 ##RANDOM FOREST------------------------------------------------------------
 
 set.seed(123)
 
+summary(train_muestra)
 
-#Cross validation V=5
+#Cross validation V=8
 
-cv8<- trainControl(number = 8, method ="cv")
+cv10<- trainControl(number = 10, method ="cv")
 
-tunegrid_rf<-expand.grid(mtry=c(2,3,4,5), #Predictores aleatorios
+tunegrid_rf<-expand.grid(mtry=c(2,3,4,5, 8), #Predictores aleatorios
                          splitrule= "variance", ##Cambiar por gini y revisar
                          min.node.size=c(1,2,3,6))
 
 
 rforest<-train(price ~ .,
                data=train_muestra, 
-               trControl = cv8,
+               trControl = cv10,
                metric = "RMSE",
                tuneGrid = tunegrid_rf,
                method ="ranger")
@@ -237,7 +234,7 @@ p_load("caret")
 set.seed(123)
 fitControl <- trainControl(## 8-fold CV
   method = "cv",
-  number = 8)
+  number = 10)
 
 
 fmla<-formula(price ~ bedrooms + property_type + distancia_parque+            
